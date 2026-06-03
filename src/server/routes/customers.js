@@ -102,31 +102,33 @@ router.get('/tree', authenticateToken, authorizeRoles('admin', 'ppic'), (req, re
       // Get all destinations for this customer
       const customerDests = destinations.filter(d => d.customer_id === customer.id);
 
-      // Group by destination name for display
+      // Group by destination name for display - each dest can have multiple types
       const destGroups = {};
       customerDests.forEach(dest => {
+        const types = JSON.parse(dest.delivery_types || '[]');
         if (!destGroups[dest.name]) {
           destGroups[dest.name] = {
             name: dest.name,
             groupId: dest.id,
-            destCode: dest.dest_code || dest.code,
+            destCode: dest.code,
             items: []
           };
         }
-        destGroups[dest.name].items.push({
-          id: dest.id,
-          code: dest.code,
-          type: JSON.parse(dest.delivery_types || '[]')[0],
-          is_default: dest.is_default
+        // Add each type as a separate item with its own code
+        types.forEach(type => {
+          destGroups[dest.name].items.push({
+            id: dest.id + '-' + type.name,
+            code: type.code,
+            type: { name: type.name, code: type.code },
+            is_default: dest.is_default
+          });
         });
       });
 
-      // Convert to array
+      // Sort items by type name
       const groupedDests = Object.values(destGroups).map(g => ({
-        name: g.name,
-        groupId: g.groupId,
-        destCode: g.destCode,
-        items: g.items
+        ...g,
+        items: g.items.sort((a, b) => a.type.name.localeCompare(b.type.name))
       }));
 
       return {
