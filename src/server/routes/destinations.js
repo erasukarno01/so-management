@@ -10,7 +10,7 @@ const router = express.Router();
 router.get('/customer/:customerId', authenticateToken, authorizeRoles('admin', 'ppic'), (req, res) => {
   try {
     const destinations = db.prepare(
-      'SELECT * FROM customer_destinations WHERE customer_id = ? ORDER BY is_default DESC, name ASC'
+      'SELECT * FROM customer_destinations WHERE customer_id = ? ORDER BY is_default DESC, name ASC, type_name ASC'
     ).all(req.params.customerId);
     res.json(destinations);
   } catch (error) {
@@ -26,7 +26,7 @@ router.get('/', authenticateToken, authorizeRoles('admin'), (req, res) => {
       SELECT cd.*, c.name as customer_name
       FROM customer_destinations cd
       LEFT JOIN customers c ON cd.customer_id = c.id
-      ORDER BY c.name, cd.name
+      ORDER BY c.name, cd.name, cd.type_name
     `).all();
     res.json(destinations);
   } catch (error) {
@@ -55,13 +55,18 @@ router.get('/:id', authenticateToken, authorizeRoles('admin', 'ppic'), (req, res
   }
 });
 
-// Create destination
+// Create destination (with specific type)
 router.post('/', authenticateToken, authorizeRoles('admin'), (req, res) => {
   try {
-    const { customer_id, code, name, is_default, delivery_types } = req.body;
+    const { customer_id, name, type_name, code, type_code, is_default } = req.body;
 
-    if (!customer_id || !name) {
-      return res.status(400).json({ error: { message: 'Customer ID and name are required' } });
+    if (!customer_id || !name || !type_name) {
+      return res.status(400).json({ error: { message: 'Customer ID, name, and type name are required' } });
+    }
+
+    const validTypes = ['Regular', 'CKD', 'Non Regular'];
+    if (!validTypes.includes(type_name)) {
+      return res.status(400).json({ error: { message: 'Invalid type name' } });
     }
 
     const customer = db.prepare('SELECT id FROM customers WHERE id = ? AND is_active = 1').get(customer_id);
@@ -70,13 +75,16 @@ router.post('/', authenticateToken, authorizeRoles('admin'), (req, res) => {
     }
 
     if (is_default) {
-      db.prepare('UPDATE customer_destinations SET is_default = 0 WHERE customer_id = ?').run(customer_id);
+      // Reset other defaults for this customer+name+type combo
+      db.prepare('UPDATE customer_destinations SET is_default = 0 WHERE customer_id = ? AND name = ? AND type_name = ?')
+        .run(customer_id, name, type_name);
     }
 
     const id = uuidv4();
-    db.prepare('INSERT INTO customer_destinations (id, customer_id, code, name, is_default, delivery_types, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime(\'now\'))').run(id, customer_id, code || '', name, is_default ? 1 : 0, delivery_types || '["Regular","CKD","Non Regular"]');
+    const now = new Date().toISOString();
+    db.prepare('INSERT INTO customer_destinations (id, customer_id, name, type_name, code, type_code, is_default, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, customer_id, name, type_name, code || '', type_code || '', is_default ? 1 : 0, now, now);
 
-    logger.info('Destination created', { id, customer_id, name, createdBy: req.user.username });
+    logger.info('Destination created', { id, customer_id, name, type_name, code, type_code, createdBy: req.user.username });
     const newDest = db.prepare('SELECT * FROM customer_destinations WHERE id = ?').get(id);
     res.status(201).json(newDest);
   } catch (error) {
@@ -89,7 +97,7 @@ router.post('/', authenticateToken, authorizeRoles('admin'), (req, res) => {
 router.patch('/:id', authenticateToken, authorizeRoles('admin'), (req, res) => {
   try {
     const { id } = req.params;
-    const { code, name, is_default, delivery_types } = req.body;
+    const { name, type_name, code, type_code, is_default } = req.body;
 
     const dest = db.prepare('SELECT * FROM customer_destinations WHERE id = ?').get(id);
     if (!dest) {
@@ -99,12 +107,15 @@ router.patch('/:id', authenticateToken, authorizeRoles('admin'), (req, res) => {
     const updates = [];
     const values = [];
 
-    if (code !== undefined) { updates.push('code = ?'); values.push(code); }
     if (name !== undefined) { updates.push('name = ?'); values.push(name); }
-    if (delivery_types !== undefined) { updates.push('delivery_types = ?'); values.push(delivery_types); }
+    if (type_name !== undefined) { updates.push('type_name = ?'); values.push(type_name); }
+    if (code !== undefined) { updates.push('code = ?'); values.push(code); }
+    if (type_code !== undefined) { updates.push('type_code = ?'); values.push(type_code); }
     if (is_default !== undefined) {
       if (is_default) {
-        db.prepare('UPDATE customer_destinations SET is_default = 0 WHERE customer_id = ?').run(dest.customer_id);
+        // Reset other defaults for this customer+name+type combo
+        db.prepare('UPDATE customer_destinations SET is_default = 0 WHERE customer_id = ? AND name = ? AND type_name = ?')
+          .run(dest.customer_id, dest.name, dest.type_name);
       }
       updates.push('is_default = ?');
       values.push(is_default ? 1 : 0);
@@ -114,16 +125,18 @@ router.patch('/:id', authenticateToken, authorizeRoles('admin'), (req, res) => {
       return res.status(400).json({ error: { message: 'No fields to update' } });
     }
 
-    updates.push('updated_at = datetime(\'now\')');
-    values.push(id);
+    const now = new Date().toISOString();
+    updates.push('updated_at = ?');
+    values.push(now);
+    values.push(id); // Add id for WHERE clause
     db.prepare('UPDATE customer_destinations SET ' + updates.join(', ') + ' WHERE id = ?').run(...values);
 
     logger.info('Destination updated', { id, updatedBy: req.user.username });
     const updated = db.prepare('SELECT * FROM customer_destinations WHERE id = ?').get(id);
     res.json(updated);
   } catch (error) {
-    logger.error('Update destination error:', error);
-    res.status(500).json({ error: { message: 'Failed to update destination' } });
+    logger.error('Update destination error:', error, { message: error.message, stack: error.stack });
+    res.status(500).json({ error: { message: 'Failed to update destination', details: error.message } });
   }
 });
 
@@ -137,7 +150,7 @@ router.delete('/:id', authenticateToken, authorizeRoles('admin'), (req, res) => 
     }
 
     db.prepare('DELETE FROM customer_destinations WHERE id = ?').run(id);
-    logger.info('Destination deleted', { id, name: dest.name, deletedBy: req.user.username });
+    logger.info('Destination deleted', { id, name: dest.name, type: dest.type_name, deletedBy: req.user.username });
     res.json({ message: 'Destination deleted successfully' });
   } catch (error) {
     logger.error('Delete destination error:', error);
@@ -154,7 +167,9 @@ router.post('/:id/set-default', authenticateToken, authorizeRoles('admin'), (req
       return res.status(404).json({ error: { message: 'Destination not found' } });
     }
 
-    db.prepare('UPDATE customer_destinations SET is_default = 0 WHERE customer_id = ?').run(dest.customer_id);
+    // Reset other defaults for this customer+name+type combo
+    db.prepare('UPDATE customer_destinations SET is_default = 0 WHERE customer_id = ? AND name = ? AND type_name = ?')
+      .run(dest.customer_id, dest.name, dest.type_name);
     db.prepare('UPDATE customer_destinations SET is_default = 1, updated_at = datetime(\'now\') WHERE id = ?').run(id);
 
     logger.info('Destination set as default', { id, customer_id: dest.customer_id });

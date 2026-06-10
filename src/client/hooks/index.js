@@ -10,3 +10,4 @@ export { useDebounce, useDebouncedCallback } from './useDebounce';
 export { useToggle } from './useToggle';
 export { useModal, useMultipleModals } from './useModal';
 export { useAsync, useAsyncList } from './useAsync';
+export { ErrorBoundary, ErrorProvider, useErrorHandler } from './ErrorBoundary';

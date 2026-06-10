@@ -74,7 +74,7 @@ router.get('/grouped', authenticateToken, authorizeRoles('admin', 'ppic'), (req,
   }
 });
 
-// Get hierarchical customer tree: Customer -> Destination -> Delivery Types
+// Get hierarchical customer tree: Customer -> Destination -> Type
 router.get('/tree', authenticateToken, authorizeRoles('admin', 'ppic'), (req, res) => {
   try {
     // Get all active customers
@@ -86,18 +86,15 @@ router.get('/tree', authenticateToken, authorizeRoles('admin', 'ppic'), (req, re
       ORDER BY c.name
     `).all();
 
-    // Get all destinations
+    // Get all destinations (each record is a destination + type combo)
     const destinations = db.prepare(`
       SELECT cd.*, c.name as customer_name
       FROM customer_destinations cd
       JOIN customers c ON cd.customer_id = c.id
-      ORDER BY c.name, cd.name
+      ORDER BY c.name, cd.name, cd.type_name
     `).all();
 
-    // Get all delivery types
-    const deliveryTypes = db.prepare('SELECT * FROM delivery_types WHERE is_active = 1 ORDER BY sort_order').all();
-
-    // Build hierarchy: Customer -> Destinations with type codes
+    // Build hierarchy: Customer -> Destinations grouped by name, with type items
     const tree = customers.map(customer => {
       // Get all destinations for this customer
       const customerDests = destinations.filter(d => d.customer_id === customer.id);
@@ -105,30 +102,26 @@ router.get('/tree', authenticateToken, authorizeRoles('admin', 'ppic'), (req, re
       // Group by destination name for display - each dest can have multiple types
       const destGroups = {};
       customerDests.forEach(dest => {
-        const types = JSON.parse(dest.delivery_types || '[]');
         if (!destGroups[dest.name]) {
           destGroups[dest.name] = {
             name: dest.name,
-            groupId: dest.id,
             destCode: dest.code,
             items: []
           };
         }
-        // Add each type as a separate item with its own code
-        types.forEach(type => {
-          destGroups[dest.name].items.push({
-            id: dest.id + '-' + type.name,
-            code: type.code,
-            type: { name: type.name, code: type.code },
-            is_default: dest.is_default
-          });
+        // Add each type as a separate item with its own type_code
+        destGroups[dest.name].items.push({
+          id: dest.id,
+          type_name: dest.type_name,
+          type_code: dest.type_code,
+          is_default: dest.is_default
         });
       });
 
       // Sort items by type name
       const groupedDests = Object.values(destGroups).map(g => ({
         ...g,
-        items: g.items.sort((a, b) => a.type.name.localeCompare(b.type.name))
+        items: g.items.sort((a, b) => a.type_name.localeCompare(b.type_name))
       }));
 
       return {

@@ -46,7 +46,10 @@ function Sidebar({ collapsed = false, onCollapsedChange }) {
       {/* Mobile sidebar */}
       <aside className={`lg:hidden fixed left-0 top-0 h-screen w-64 bg-slate-900 text-white z-50 transition-transform ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-16 flex items-center justify-between px-4 border-b border-white/10">
-          <span className="font-bold">SJP Delivery</span>
+          <div className="flex items-center gap-2">
+            <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain" />
+            <span className="font-bold">Delivery Control</span>
+          </div>
           <button onClick={() => setMobileOpen(false)}><X className="w-5 h-5" /></button>
         </div>
         <nav className="p-3 space-y-1">
@@ -62,7 +65,12 @@ function Sidebar({ collapsed = false, onCollapsedChange }) {
       {/* Desktop sidebar */}
       <aside className={`hidden lg:flex fixed left-0 top-0 h-screen bg-slate-900 text-white flex-col z-50 transition-all duration-300 ${collapsed ? 'w-16' : 'w-56'}`}>
         <div className="h-16 flex items-center justify-between px-4 border-b border-white/10">
-          {!collapsed && <span className="font-bold text-sm">SJP Delivery</span>}
+          {!collapsed && (
+            <div className="flex items-center gap-2">
+              <img src="/logo.png" alt="Logo" className="w-6 h-6 object-contain" />
+              <span className="font-bold text-sm">Delivery Control</span>
+            </div>
+          )}
           <button onClick={toggle} className="p-2 hover:bg-white/10 rounded-lg">
             {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>

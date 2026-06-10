@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import { DashboardPage } from './pages/dashboard';
 import { SalesOrdersPage } from './pages/sales-orders';
 import DeliveryExecution from './pages/DeliveryExecution';
+import ScanQRCode from './pages/ScanQRCode';
 import { AdminPage } from './pages/admin';
 import { AlertsPage } from './pages/alerts';
 import { ReportsPage } from './pages/reports';
@@ -46,6 +47,7 @@ function App() {
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="sales-orders" element={<SalesOrdersPage />} />
         <Route path="delivery" element={<DeliveryExecution />} />
+        <Route path="delivery/scan/:batchId" element={<ScanQRCode />} />
         <Route path="admin" element={<AdminPage />} />
         <Route path="alerts" element={<AlertsPage />} />
         <Route path="reports" element={<ReportsPage />} />

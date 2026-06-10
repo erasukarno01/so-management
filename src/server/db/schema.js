@@ -16,6 +16,7 @@ export const SCHEMA = `
   -- Customers table
   CREATE TABLE IF NOT EXISTS customers (
     id TEXT PRIMARY KEY,
+    code TEXT,
     name TEXT NOT NULL,
     delivery_type_id TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
@@ -60,10 +61,11 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS customer_destinations (
     id TEXT PRIMARY KEY,
     customer_id TEXT NOT NULL,
-    code TEXT NOT NULL,
     name TEXT NOT NULL,
+    type_name TEXT NOT NULL DEFAULT 'Regular',
+    code TEXT NOT NULL,
+    type_code TEXT NOT NULL,
     is_default INTEGER NOT NULL DEFAULT 0,
-    delivery_types TEXT DEFAULT '["Regular","CKD","Non Regular"]',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE

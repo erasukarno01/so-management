@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(node -e ' *)",
-      "Bash(sqlite3 \"C:/so_management/data/delivery.db\" \"SELECT name FROM sqlite_master WHERE type='table';\")"
-    ]
-  }
-}

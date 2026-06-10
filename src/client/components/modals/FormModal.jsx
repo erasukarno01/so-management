@@ -1,6 +1,6 @@
 // FormModal - Form input modal with validation
 import { useState, useEffect } from 'react';
-import { X, Edit2, Plus, Save, Loader2 } from 'lucide-react';
+import { X, Edit2, Plus, Save, Loader2, Barcode } from 'lucide-react';
 
 export function FormModal({
   isOpen,
@@ -13,32 +13,44 @@ export function FormModal({
   submitLabel = 'Save',
   customContent,
   itemProps,
+  headerBarcode,
 }) {
   const [formData, setFormData] = useState({});
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
     if (isOpen) {
-      const initial = { ...initialData } || {};
-      if (!initialData || Object.keys(initialData).length === 0) {
+      // Only reset to initialData if we have it AND it's not a custom content form
+      if (initialData && Object.keys(initialData).length > 0) {
+        const initial = { ...initialData };
+        Object.keys(initial).forEach(key => {
+          const field = fields.find(f => f.key === key);
+          if (field?.type === 'date' && initial[key]) {
+            if (typeof initial[key] === 'string' && initial[key].includes('T')) {
+              initial[key] = initial[key].split('T')[0];
+            }
+          }
+        });
+        setFormData(initial);
+        setErrors({});
+      } else if (!customContent) {
+        // Only apply field defaults for non-customContent forms
+        const initial = {};
         fields.forEach(f => {
-          if (f.defaultValue !== undefined && initial[f.key] === undefined) {
+          if (f.defaultValue !== undefined) {
             initial[f.key] = f.defaultValue;
           }
         });
+        setFormData(initial);
+        setErrors({});
       }
-      Object.keys(initial).forEach(key => {
-        const field = fields.find(f => f.key === key);
-        if (field?.type === 'date' && initial[key]) {
-          if (typeof initial[key] === 'string' && initial[key].includes('T')) {
-            initial[key] = initial[key].split('T')[0];
-          }
-        }
-      });
-      setFormData(initial);
+      // For customContent, do NOT reset formData - let it be controlled by parent
+    } else {
+      // Reset form when modal closes
+      setFormData({});
       setErrors({});
     }
-  }, [isOpen, initialData, fields]);
+  }, [isOpen, initialData, fields, customContent]);
 
   const handleChange = (key, value) => {
     setFormData(prev => ({ ...prev, [key]: value }));
@@ -53,6 +65,7 @@ export function FormModal({
 
   const handleSubmit = () => {
     if (customContent) {
+      // For custom content, pass the actual formData from local state
       onSubmit(formData);
       return;
     }
@@ -154,6 +167,12 @@ export function FormModal({
             <div>
               <h2 className="text-lg font-bold text-slate-800">{title}</h2>
               <p className="text-xs text-slate-500">{isEdit ? 'Update existing record' : 'Create new record'}</p>
+              {headerBarcode && (
+                <div className="mt-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center gap-2">
+                  <Barcode className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <code className="font-mono text-xs text-emerald-800 block select-all">{headerBarcode}</code>
+                </div>
+              )}
             </div>
           </div>
           <button onClick={onClose} className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors">
@@ -163,7 +182,7 @@ export function FormModal({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {customContent ? customContent(formData, setFormData, errors, itemProps) : (
+          {customContent ? customContent(formData, setFormData, errors, setErrors, itemProps) : (
             <div className="space-y-4">
               {fields.map(field => (
                 <div key={field.key} className={field.fullWidth ? '' : ''}>

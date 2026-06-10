@@ -26,9 +26,11 @@ export function DataTable({
   striped = true,
   hoverable = true,
   stickyHeader = false,
+  defaultSortKey = null,
+  defaultSortDirection = 'asc',
 }) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  const [sortConfig, setSortConfig] = useState({ key: defaultSortKey, direction: defaultSortDirection });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(initialPageSize);
 

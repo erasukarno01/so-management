@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head><title>Test PDF</title></head>
+<body>
+<h2>Click to generate test PDF</h2>
+<button onclick="generateTest()">Generate PDF</button>
+<script type="module">
+import { jsPDF } from 'jspdf';
+window.generateTest = function() {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 15;
+  
+  // Header
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text('DELIVERY REPORT', margin, 20);
+  
+  // Logo box on RIGHT
+  const logoBoxW = 50;
+  const logoX = pageWidth - margin - logoBoxW;
+  doc.setFillColor(236, 253, 245);
+  doc.roundedRect(logoX, 10, logoBoxW, 20, 2, 2, 'F');
+  
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('CHAO LONG', logoX + logoBoxW / 2, 16, { align: 'center' });
+  
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+  doc.text('INDIA PVT LTD', logoX + logoBoxW / 2, 21, { align: 'center' });
+  
+  // Divider
+  doc.setDrawColor(6, 95, 70);
+  doc.setLineWidth(1);
+  doc.line(margin, 35, pageWidth - margin, 35);
+  
+  // Signature Area - MORE SPACE
+  let y = 250;
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Approved By', margin + 50, y, { align: 'center' });
+  doc.text('Warehouse', margin + 95 + 50, y, { align: 'center' });
+  doc.text('Received By', pageWidth - margin - 50, y, { align: 'center' });
+  
+  // Lines with MORE SPACE
+  doc.setDrawColor(209, 213, 219);
+  doc.line(margin + 10, y + 25, margin + 90, y + 25);
+  doc.line(margin + 95 + 10, y + 25, margin + 95 + 90, y + 25);
+  doc.line(pageWidth - margin - 90, y + 25, pageWidth - margin - 10, y + 25);
+  
+  doc.save('test.pdf');
+  alert('PDF generated!');
+}
+</script>
+</body>
+</html>

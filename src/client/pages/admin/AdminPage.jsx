@@ -39,9 +39,31 @@ export function AdminPage() {
   const [userFormModal, setUserFormModal] = useState({ open: false, data: null });
   const [userDeleteModal, setUserDeleteModal] = useState({ open: false, data: null });
 
+  // User fetch function
+  const fetchUserById = useCallback(async (userId) => {
+    try {
+      const res = await api.get(`/users/${userId}`);
+      return res.data;
+    } catch (err) {
+      toast.error('Failed to fetch user data');
+      return null;
+    }
+  }, [toast]);
+
   // Product modal states
   const [productFormModal, setProductFormModal] = useState({ open: false, data: null });
   const [productDeleteModal, setProductDeleteModal] = useState({ open: false, data: null });
+
+  // Product fetch function
+  const fetchProductById = useCallback(async (productId) => {
+    try {
+      const res = await api.get(`/products/${productId}`);
+      return res.data;
+    } catch (err) {
+      toast.error('Failed to fetch product data');
+      return null;
+    }
+  }, [toast]);
 
   // Delivery types for customer form
   const [deliveryTypes, setDeliveryTypes] = useState([]);
@@ -51,14 +73,31 @@ export function AdminPage() {
 
   // Customer CRUD
   const handleCreateCustomer = () => setFormModal({ open: true, data: null });
-  const handleEditCustomer = (item) => setFormModal({ open: true, data: item });
+  const handleEditCustomer = async (item) => {
+    if (item.id) {
+      try {
+        const res = await api.get(`/customers/${item.id}`);
+        setFormModal({ open: true, data: res.data });
+      } catch (err) {
+        toast.error('Failed to fetch customer data');
+      }
+    } else {
+      setFormModal({ open: true, data: item });
+    }
+  };
   const handleDeleteCustomer = (item) => setDeleteModal({ open: true, data: item });
 
   const handleSubmitCustomer = async (formData) => {
     setIsSubmitting(true);
     try {
       if (formData.id) {
-        await api.patch(`/customers/${encodeURIComponent(formData.id)}`, formData);
+        // Extract only the fields needed for update
+        const payload = {
+          name: formData.name,
+          code: formData.code,
+          delivery_type_id: formData.delivery_type_id || null,
+        };
+        await api.patch(`/customers/${encodeURIComponent(formData.id)}`, payload);
         toast.success('Customer updated');
       } else {
         await api.post('/customers', formData);
@@ -92,29 +131,96 @@ export function AdminPage() {
   const handleAddDestination = (customerId) => {
     setDestFormModal({ open: true, data: null, customerId });
   };
-  const handleEditDestination = (dest, customerId) => {
-    // If it's an individual item (from type list), format for edit
-    if (dest.type) {
-      setDestFormModal({
-        open: true,
-        data: { id: dest.id, code: dest.code, name: dest.name || dest.type, delivery_types: JSON.stringify([dest.type]) },
-        customerId
-      });
-    } else {
-      // Full destination object
-      setDestFormModal({ open: true, data: dest, customerId });
+
+  // Fetch full destination data from server
+  const fetchDestinationById = useCallback(async (destId) => {
+    try {
+      const res = await api.get(`/destinations/${destId}`);
+      return res.data;
+    } catch (err) {
+      toast.error('Failed to fetch destination data');
+      return null;
     }
+  }, [toast]);
+
+  // Add new destination with specific type - opens modal with destination info pre-filled
+  const [addTypeModal, setAddTypeModal] = useState({ open: false, destId: null, destName: '', destCode: '', customerId: null, currentTypes: [] });
+
+  const handleAddType = (dest, customerId) => {
+    // Open modal to add new destination record with type
+    // Pre-fill with destination name and code
+    const existingTypes = dest.items?.map(i => i.type_name).filter(Boolean) || [];
+    setAddTypeModal({
+      open: true,
+      destId: null,
+      destName: dest.name,
+      destCode: dest.destCode,
+      customerId,
+      currentTypes: existingTypes
+    });
   };
-  const handleDeleteDestination = (dest) => {
-    setDestDeleteModal({ open: true, data: dest });
+
+  const handleEditDestination = async (dest, customerId) => {
+    // For destination (parent row), we need to handle edit differently
+    // The dest object has items[] array, not direct id
+    if (dest.items && dest.items.length > 0) {
+      // This is the grouped destination - fetch by first item's id
+      const firstItem = dest.items[0];
+      const fullData = await fetchDestinationById(firstItem.id);
+      if (fullData) {
+        setDestFormModal({ open: true, data: fullData, customerId });
+        return;
+      }
+    }
+    // For type items (child rows), use item.id directly
+    if (dest.id) {
+      const fullData = await fetchDestinationById(dest.id);
+      if (fullData) {
+        setDestFormModal({ open: true, data: fullData, customerId });
+        return;
+      }
+    }
+    toast.error('Unable to edit destination');
+  };
+
+  const handleDeleteDestination = async (dest) => {
+    let destId = null;
+    let destName = dest.name || 'this destination';
+
+    // For grouped destination (has items array), use first item's id
+    if (dest.items && dest.items.length > 0) {
+      destId = dest.items[0].id;
+    } else if (dest.id) {
+      destId = dest.id;
+    }
+
+    if (!destId) {
+      toast.error('Invalid destination');
+      return;
+    }
+    setDestDeleteModal({ open: true, data: { id: destId, name: destName } });
   };
 
   const handleDestinationSubmit = async (formData) => {
+    // Validate required fields
+    if (!formData.name || !formData.code || !formData.type_name || !formData.type_code) {
+      toast.error('All fields are required');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const payload = { ...formData, customer_id: destFormModal.customerId };
-      if (formData.id) {
-        await api.patch(`/destinations/${encodeURIComponent(formData.id)}`, payload);
+      const payload = {
+        name: formData.name,
+        code: formData.code,
+        type_name: formData.type_name,
+        type_code: formData.type_code,
+        is_default: formData.is_default || false,
+        customer_id: destFormModal.customerId,
+      };
+
+      if (destFormModal.data?.id) {
+        await api.patch(`/destinations/${encodeURIComponent(destFormModal.data.id)}`, payload);
         toast.success('Destination updated');
       } else {
         await api.post('/destinations', payload);
@@ -146,7 +252,16 @@ export function AdminPage() {
 
   // User CRUD
   const handleCreateUser = () => setUserFormModal({ open: true, data: null });
-  const handleEditUser = (user) => setUserFormModal({ open: true, data: user });
+  const handleEditUser = async (user) => {
+    if (user.id) {
+      const fullData = await fetchUserById(user.id);
+      if (fullData) {
+        setUserFormModal({ open: true, data: fullData });
+      }
+    } else {
+      setUserFormModal({ open: true, data: user });
+    }
+  };
   const handleDeleteUser = (user) => setUserDeleteModal({ open: true, data: user });
 
   const handleSubmitUser = async (formData) => {
@@ -185,7 +300,16 @@ export function AdminPage() {
 
   // Product CRUD
   const handleCreateProduct = () => setProductFormModal({ open: true, data: null });
-  const handleEditProduct = (product) => setProductFormModal({ open: true, data: product });
+  const handleEditProduct = async (product) => {
+    if (product.id) {
+      const fullData = await fetchProductById(product.id);
+      if (fullData) {
+        setProductFormModal({ open: true, data: fullData });
+      }
+    } else {
+      setProductFormModal({ open: true, data: product });
+    }
+  };
   const handleDeleteProduct = (product) => setProductDeleteModal({ open: true, data: product });
 
   const handleSubmitProduct = async (formData) => {
@@ -226,7 +350,7 @@ export function AdminPage() {
   const getCustomerFormFields = () => [
     { key: 'code', label: 'Customer Code', placeholder: 'e.g., CUST-001' },
     { key: 'name', label: 'Customer Name', required: true, placeholder: 'Enter customer name' },
-    { key: 'delivery_type_id', label: 'Primary Delivery Type', type: 'select', options: deliveryTypes.map(t => ({ value: t.id, label: `${t.code || ''} ${t.name}`.trim() })), placeholder: 'Select primary type' },
+    { key: 'delivery_type_id', label: 'Primary Delivery Type', type: 'select', options: deliveryTypes.map(t => ({ value: t.id, label: t.name })), placeholder: 'Select primary type' },
   ];
 
   const getUserFormFields = () => [
@@ -301,6 +425,7 @@ export function AdminPage() {
           onAddDestination={handleAddDestination}
           onEditDestination={handleEditDestination}
           onDeleteDestination={handleDeleteDestination}
+          onAddType={handleAddType}
         />
       )}
       {activeTab === 'products' && (
@@ -361,15 +486,93 @@ export function AdminPage() {
         isOpen={destFormModal.open}
         onClose={() => setDestFormModal({ open: false, data: null, customerId: null })}
         onSubmit={handleDestinationSubmit}
-        title={destFormModal.data ? 'Edit Destination' : 'New Destination'}
-        fields={[
-          { key: 'code', label: 'Destination Code', required: true, placeholder: 'e.g., 2S85' },
-          { key: 'name', label: 'Destination Name', required: true, placeholder: 'e.g., Chennai' },
-          { key: 'is_default', label: 'Set as Default', type: 'checkbox' },
-        ]}
-        initialData={destFormModal.data}
+        title={destFormModal.data?.id ? 'Edit Destination' : 'New Destination'}
+        customContent={(formData, setFormData, errors, setErrors) => (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Destination Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.name || ''}
+                onChange={e => {
+                  setFormData(prev => ({ ...prev, name: e.target.value }));
+                  if (errors?.name) setErrors(prev => { const n = { ...prev }; delete n.name; return n; });
+                }}
+                placeholder="e.g., Chennai"
+                className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 transition-all ${errors?.name ? 'border-red-400 bg-red-50' : 'border-slate-300 focus:border-blue-400'}`}
+              />
+              {errors?.name && <p className="mt-1 text-xs text-red-500 font-medium">{errors.name}</p>}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Destination Code <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.code || ''}
+                onChange={e => {
+                  setFormData(prev => ({ ...prev, code: e.target.value }));
+                  if (errors?.code) setErrors(prev => { const n = { ...prev }; delete n.code; return n; });
+                }}
+                placeholder="e.g., 2S85"
+                className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 transition-all ${errors?.code ? 'border-red-400 bg-red-50' : 'border-slate-300 focus:border-blue-400'}`}
+              />
+              {errors?.code && <p className="mt-1 text-xs text-slate-400">Code for this destination location</p>}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Type Name <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={formData.type_name || ''}
+                onChange={e => {
+                  setFormData(prev => ({ ...prev, type_name: e.target.value }));
+                  if (errors?.type_name) setErrors(prev => { const n = { ...prev }; delete n.type_name; return n; });
+                }}
+                className="w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 border-slate-300 focus:border-blue-400"
+              >
+                <option value="">Select type...</option>
+                {['Regular', 'CKD', 'Non Regular'].map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+              {errors?.type_name && <p className="mt-1 text-xs text-red-500 font-medium">{errors.type_name}</p>}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Type Code <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.type_code || ''}
+                onChange={e => {
+                  setFormData(prev => ({ ...prev, type_code: e.target.value }));
+                  if (errors?.type_code) setErrors(prev => { const n = { ...prev }; delete n.type_code; return n; });
+                }}
+                placeholder="e.g., 1234"
+                className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 transition-all ${errors?.type_code ? 'border-red-400 bg-red-50' : 'border-slate-300 focus:border-blue-400'}`}
+              />
+              {errors?.type_code && <p className="mt-1 text-xs text-red-500 font-medium">{errors.type_code}</p>}
+            </div>
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.is_default || false}
+                  onChange={e => setFormData(prev => ({ ...prev, is_default: e.target.checked }))}
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-slate-700">Set as Default</span>
+              </label>
+            </div>
+          </div>
+        )}
+        fields={[]}
+        initialData={destFormModal.data || {}}
         isLoading={isSubmitting}
-        submitLabel={destFormModal.data ? 'Update' : 'Create'}
+        submitLabel={destFormModal.data?.id ? 'Update' : 'Create'}
       />
 
       <DeleteModal
@@ -379,6 +582,98 @@ export function AdminPage() {
         title="Delete Destination"
         message={`Delete destination "${destDeleteModal.data?.name}"? This action cannot be undone.`}
         isLoading={isSubmitting}
+      />
+
+      {/* Add Type Modal - Add a new destination with specific type */}
+      <FormModal
+        isOpen={addTypeModal.open}
+        onClose={() => setAddTypeModal({ open: false, destId: null, destName: '', destCode: '', customerId: null, currentTypes: [] })}
+        onSubmit={async (formData) => {
+          if (!formData.type_name || !formData.type_code) {
+            toast.error('Type name and type code are required');
+            return;
+          }
+          setIsSubmitting(true);
+          try {
+            // Create new destination record with specific type
+            await api.post('/destinations', {
+              customer_id: addTypeModal.customerId,
+              name: addTypeModal.destName,
+              code: addTypeModal.destCode,
+              type_name: formData.type_name,
+              type_code: formData.type_code,
+              is_default: formData.is_default || false
+            });
+            toast.success(`Added ${formData.type_name} destination`);
+            setAddTypeModal({ open: false, destId: null, destName: '', destCode: '', customerId: null, currentTypes: [] });
+            handleRefresh();
+          } catch (err) {
+            toast.error(err.response?.data?.error?.message || 'Failed to add destination');
+          } finally {
+            setIsSubmitting(false);
+          }
+        }}
+        title="Add Destination"
+        customContent={(formData, setFormData, errors, setErrors) => (
+          <div className="space-y-4">
+            <div className="bg-slate-50 rounded-lg p-4">
+              <p className="text-sm text-slate-500">Adding destination to:</p>
+              <p className="font-semibold text-slate-800">{addTypeModal.destName}</p>
+              <p className="text-xs text-slate-500 font-mono">Destination Code: {addTypeModal.destCode}</p>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Type Name <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={formData.type_name || ''}
+                onChange={e => {
+                  setFormData(prev => ({ ...prev, type_name: e.target.value }));
+                  if (errors?.type_name) setErrors(prev => { const n = { ...prev }; delete n.type_name; return n; });
+                }}
+                className="w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 border-slate-300 focus:border-blue-400"
+              >
+                <option value="">Select type...</option>
+                {['Regular', 'CKD', 'Non Regular'].map(type => (
+                  <option key={type} value={type} disabled={addTypeModal.currentTypes.includes(type)}>
+                    {type}{addTypeModal.currentTypes.includes(type) ? ' (already exists)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Type Code <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.type_code || ''}
+                onChange={e => {
+                  setFormData(prev => ({ ...prev, type_code: e.target.value }));
+                  if (errors?.type_code) setErrors(prev => { const n = { ...prev }; delete n.type_code; return n; });
+                }}
+                placeholder="e.g., 1234"
+                className="w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 border-slate-300 focus:border-blue-400"
+              />
+              {errors?.type_code && <p className="mt-1 text-xs text-red-500 font-medium">{errors.type_code}</p>}
+            </div>
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.is_default || false}
+                  onChange={e => setFormData(prev => ({ ...prev, is_default: e.target.checked }))}
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-slate-700">Set as Default</span>
+              </label>
+            </div>
+          </div>
+        )}
+        fields={[]}
+        initialData={{}}
+        isLoading={isSubmitting}
+        submitLabel="Add Destination"
       />
 
       {/* Product Modals */}

@@ -9,7 +9,7 @@ export function SidebarFooter({ isExpanded }) {
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <p className="text-[10px] text-slate-500 font-medium tracking-wide">Version 2.0.0</p>
           </div>
-          <p className="text-[9px] text-slate-600 text-center">© 2026 SJP Delivery Systems</p>
+          <p className="text-[9px] text-slate-600 text-center">© 2026 Delivery Control Systems</p>
         </div>
       ) : (
         <div className="w-8 h-8 rounded-lg bg-white/[0.02] border border-white/5 flex items-center justify-center">

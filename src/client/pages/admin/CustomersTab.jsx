@@ -1,17 +1,14 @@
 // CustomersTab - Customer hierarchical tree view
 import { useState, useEffect, useCallback } from 'react';
-import { Building2, Edit2, Trash2, Plus, MapPin, Check, ChevronRight, Truck, Package } from 'lucide-react';
+import { Building2, Edit2, Trash2, Plus, Check, Package } from 'lucide-react';
 import api from '../../api/client';
 import { useToast } from '../../hooks';
-import { formatDate } from '../../utils/formatters';
 
-export function CustomersTab({ onEdit, onDelete, onAddDestination, onEditDestination, onDeleteDestination }) {
+export function CustomersTab({ onEdit, onDelete, onAddDestination, onEditDestination, onDeleteDestination, onAddType }) {
   const toast = useToast();
   const [treeData, setTreeData] = useState({ main: [], others: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [expandedCustomers, setExpandedCustomers] = useState(new Set());
-  const [expandedDestinations, setExpandedDestinations] = useState(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -20,9 +17,6 @@ export function CustomersTab({ onEdit, onDelete, onAddDestination, onEditDestina
       const res = await api.get('/customers/tree');
       const data = res.data || { main: [], others: [] };
       setTreeData(data);
-      // Auto-expand all customers
-      const allCustomerIds = [...data.main.map(c => c.id), ...data.others.map(c => c.id)];
-      setExpandedCustomers(new Set(allCustomerIds));
     } catch (err) {
       const errorMessage = err.response?.data?.error?.message || err.message;
       setError(errorMessage);
@@ -35,22 +29,6 @@ export function CustomersTab({ onEdit, onDelete, onAddDestination, onEditDestina
   useEffect(() => {
     load();
   }, []);
-
-  const toggleCustomer = (customerId) => {
-    setExpandedCustomers(prev => {
-      const next = new Set(prev);
-      next.has(customerId) ? next.delete(customerId) : next.add(customerId);
-      return next;
-    });
-  };
-
-  const toggleDestination = (destId) => {
-    setExpandedDestinations(prev => {
-      const next = new Set(prev);
-      next.has(destId) ? next.delete(destId) : next.add(destId);
-      return next;
-    });
-  };
 
   if (loading) {
     return (
@@ -111,15 +89,12 @@ export function CustomersTab({ onEdit, onDelete, onAddDestination, onEditDestina
               <CustomerNode
                 key={customer.id}
                 customer={customer}
-                isExpanded={expandedCustomers.has(customer.id)}
-                expandedDests={expandedDestinations}
-                onToggleCustomer={() => toggleCustomer(customer.id)}
-                onToggleDest={toggleDestination}
                 onEdit={() => onEdit(customer)}
                 onDelete={() => onDelete(customer)}
                 onAddDestination={() => onAddDestination(customer.id)}
                 onEditDestination={onEditDestination}
                 onDeleteDestination={onDeleteDestination}
+                onAddType={onAddType}
               />
             ))}
           </div>
@@ -137,21 +112,27 @@ export function CustomersTab({ onEdit, onDelete, onAddDestination, onEditDestina
 
           <div className="divide-y divide-slate-100">
             {treeData.others.map(customer => (
-              <div key={customer.id} className="px-5 py-4 flex items-center justify-between hover:bg-slate-50">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
-                    <Building2 className="w-5 h-5 text-slate-500" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {customer.code && (
-                      <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-mono font-bold rounded">
-                        {customer.code}
-                      </span>
-                    )}
-                    <span className="font-medium text-slate-800">{customer.name}</span>
-                  </div>
+              <div key={customer.id} className="flex items-center gap-3 py-3 px-4 hover:bg-slate-50">
+                <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
+                  <Building2 className="w-5 h-5 text-slate-500" />
+                </div>
+                <div className="flex-1 flex items-center gap-2">
+                  {customer.code && (
+                    <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-mono font-bold rounded">
+                      {customer.code}
+                    </span>
+                  )}
+                  <span className="font-medium text-slate-800">{customer.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onAddDestination(customer.id)}
+                    className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors flex items-center gap-1"
+                    title="Add Destination"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Destination
+                  </button>
                   <button onClick={() => onEdit(customer)} className="p-2 rounded-lg hover:bg-blue-100 text-slate-400 hover:text-blue-600">
                     <Edit2 className="w-4 h-4" />
                   </button>
@@ -178,152 +159,127 @@ export function CustomersTab({ onEdit, onDelete, onAddDestination, onEditDestina
 }
 
 // Customer Node Component
-function CustomerNode({ customer, isExpanded, expandedDests, onToggleCustomer, onToggleDest, onEdit, onDelete, onAddDestination, onEditDestination, onDeleteDestination }) {
-  const destCount = customer.destinations?.length || 0;
-
+function CustomerNode({ customer, onEdit, onDelete, onAddDestination, onEditDestination, onDeleteDestination, onAddType }) {
   return (
-    <div>
+    <div className="bg-white border-b border-slate-100">
       {/* Customer Header */}
-      <div
-        className="px-5 py-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
-        onClick={onToggleCustomer}
-      >
-        <div className="flex items-center gap-3">
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${isExpanded ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-            <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-            <Building2 className="w-5 h-5 text-emerald-600" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              {customer.code && (
-                <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-mono font-bold rounded">
-                  {customer.code}
-                </span>
-              )}
-              <span className="font-semibold text-slate-800">{customer.name}</span>
-            </div>
-            <div className="flex items-center gap-2 mt-0.5">
-              <MapPin className="w-3 h-3 text-slate-400" />
-              <span className="text-xs text-slate-500">{destCount} destination{destCount !== 1 ? 's' : ''}</span>
-            </div>
-          </div>
+      <div className="flex items-center gap-3 py-3 px-4">
+        <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+          <Building2 className="w-5 h-5 text-emerald-600" />
+        </div>
+        <div className="flex-1 flex items-center gap-2">
+          {customer.code && (
+            <span className="font-mono font-bold text-slate-700">{customer.code}</span>
+          )}
+          <span className="font-semibold text-slate-800">{customer.name}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={(e) => { e.stopPropagation(); onAddDestination(); }} className="p-2 rounded-lg hover:bg-blue-100 text-slate-400 hover:text-blue-600" title="Add Destination">
-            <Plus className="w-4 h-4" />
+          <button
+            onClick={onAddDestination}
+            className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors flex items-center gap-1"
+            title="Add Destination"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Destination
           </button>
-          <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="p-2 rounded-lg hover:bg-blue-100 text-slate-400 hover:text-blue-600">
+          <button onClick={onEdit} className="p-2 rounded-lg hover:bg-blue-100 text-slate-400 hover:text-blue-600" title="Edit Customer">
             <Edit2 className="w-4 h-4" />
           </button>
-          <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-2 rounded-lg hover:bg-red-100 text-slate-400 hover:text-red-600">
+          <button onClick={onDelete} className="p-2 rounded-lg hover:bg-red-100 text-slate-400 hover:text-red-600" title="Delete Customer">
             <Trash2 className="w-4 h-4" />
           </button>
         </div>
       </div>
 
       {/* Destinations List */}
-      {isExpanded && destCount > 0 && (
-        <div className="bg-slate-50 border-t border-slate-100">
-          <div className="px-5 py-3 pl-16 space-y-2">
-            {customer.destinations.map(dest => (
-              <DestinationNode
-                key={dest.groupId}
-                destination={dest}
-                isExpanded={expandedDests.has(dest.groupId)}
-                onToggle={() => onToggleDest(dest.groupId)}
-                onEdit={() => onEditDestination({ ...dest, customer_id: customer.id }, customer.id)}
-                onDelete={() => onDeleteDestination({ ...dest, customer_id: customer.id })}
-                onEditItem={(item) => onEditDestination(item, customer.id)}
-                onDeleteItem={(item) => onDeleteDestination(item)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="pl-10 pr-4 py-2 space-y-1">
+        {customer.destinations && customer.destinations.length > 0 ? (
+          customer.destinations.map((dest, index) => (
+            <DestinationNode
+              key={`${dest.name}-${index}`}
+              destination={dest}
+              onEdit={() => onEditDestination({ ...dest, customer_id: customer.id }, customer.id)}
+              onDelete={() => onDeleteDestination({ ...dest, customer_id: customer.id })}
+              onEditItem={(item) => onEditDestination(item, customer.id)}
+              onDeleteItem={(item) => onDeleteDestination(item)}
+              onAddType={() => onAddType(dest, customer.id)}
+            />
+          ))
+        ) : (
+          <div className="py-2 text-sm text-slate-400 italic">No destinations yet</div>
+        )}
+      </div>
     </div>
   );
 }
 
 // Destination Node Component
 // Shows destination name with dest code and list of types with their type codes
-function DestinationNode({ destination, isExpanded, onToggle, onEdit, onDelete, onEditItem, onDeleteItem }) {
-  const itemCount = destination.items?.length || 0;
+function DestinationNode({ destination, onEdit, onDelete, onEditItem, onDeleteItem, onAddType }) {
   const destCode = destination.destCode || 'N/A';
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+    <div className="border border-slate-200 rounded-lg mb-2 overflow-hidden">
       {/* Destination Header */}
-      <div
-        className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
-        onClick={onToggle}
-      >
-        <div className="flex items-center gap-3">
-          <div className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${isExpanded ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
-            <ChevronRight className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-          </div>
-          <div className="w-12 h-10 rounded bg-slate-100 flex items-center justify-center">
-            <span className="font-mono text-sm font-bold text-slate-700">{destCode}</span>
-          </div>
-          <div>
-            <span className="font-medium text-slate-800">{destination.name}</span>
-            <div className="flex items-center gap-1 mt-0.5">
-              <MapPin className="w-3 h-3 text-slate-400" />
-              <span className="text-xs text-slate-500">{itemCount} types</span>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="p-1.5 rounded hover:bg-blue-100 text-slate-400 hover:text-blue-600" title="Edit Destination">
-            <Edit2 className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-1.5 rounded hover:bg-red-100 text-slate-400 hover:text-red-600" title="Delete Destination">
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
+      <div className="flex items-center gap-2 py-2 px-3 bg-slate-50 border-b border-slate-200">
+        <span className="font-semibold text-slate-800">{destination.name}</span>
+        <span className="font-mono text-sm font-bold text-slate-600">({destCode})</span>
+        <button
+          onClick={onAddType}
+          className="ml-auto px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded transition-colors flex items-center gap-1"
+          title="Add Type"
+        >
+          <Plus className="w-3 h-3" />
+          Add Type
+        </button>
+        <button
+          onClick={onEdit}
+          className="p-1.5 rounded hover:bg-blue-100 text-slate-400 hover:text-blue-600"
+          title="Edit Destination"
+        >
+          <Edit2 className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={onDelete}
+          className="p-1.5 rounded hover:bg-red-100 text-slate-400 hover:text-red-600"
+          title="Delete Destination"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
       </div>
 
       {/* Type Items List */}
-      {isExpanded && itemCount > 0 && (
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-2">
-          <div className="space-y-2">
-            {destination.items.map((item) => (
-              <div key={item.id} className="flex items-center justify-between px-3 py-2 bg-white border border-slate-200 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Truck className="w-4 h-4 text-blue-500" />
-                  <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-medium rounded">
-                    {item.type}
-                  </span>
-                  <span className="font-mono text-sm font-bold text-blue-600">
-                    ({item.code})
-                  </span>
-                  {item.is_default === 1 && (
-                    <span className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-xs rounded">
-                      <Check className="w-3 h-3" />
-                      Default
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => onEditItem(item)}
-                    className="p-1.5 rounded hover:bg-blue-100 text-slate-400 hover:text-blue-600"
-                    title="Edit Code"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => onDeleteItem(item)}
-                    className="p-1.5 rounded hover:bg-red-100 text-slate-400 hover:text-red-600"
-                    title="Delete"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+      {destination.items && destination.items.length > 0 && (
+        <div className="divide-y divide-slate-100">
+          {destination.items.map((item) => (
+            <div key={item.id} className="flex items-center gap-3 py-2 px-3 hover:bg-slate-50">
+              <span className="w-6 text-center text-slate-300">|</span>
+              <span className="font-medium text-slate-700 min-w-28">{item.type_name}</span>
+              <span className="font-mono text-sm font-bold text-blue-600">({item.type_code})</span>
+              {item.is_default === 1 && (
+                <span className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-xs rounded">
+                  <Check className="w-3 h-3" />
+                  Default
+                </span>
+              )}
+              <div className="ml-auto flex items-center gap-1">
+                <button
+                  onClick={() => onEditItem(item)}
+                  className="p-1 rounded hover:bg-blue-100 text-slate-400 hover:text-blue-600"
+                  title="Edit"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => onDeleteItem(item)}
+                  className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-600"
+                  title="Delete"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

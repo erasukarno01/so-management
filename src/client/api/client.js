@@ -36,9 +36,20 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Handle 401 - unauthorized (no token)
     if (error.response?.status === 401) {
       localStorage.removeItem('so-auth-storage');
+      localStorage.removeItem('so-auth-storage-ALT');
       window.location.href = '/login';
+    }
+    // Handle 403 - forbidden (invalid/expired token)
+    if (error.response?.status === 403) {
+      const errorMessage = error.response?.data?.error?.message || '';
+      if (errorMessage.includes('token') || errorMessage.includes('Invalid') || errorMessage.includes('expired')) {
+        localStorage.removeItem('so-auth-storage');
+        localStorage.removeItem('so-auth-storage-ALT');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

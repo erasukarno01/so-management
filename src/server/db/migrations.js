@@ -32,6 +32,15 @@ export function runMigrations(db) {
   // Migration: Add created_at to product_master (may not exist in older tables)
   safeExec(db, "ALTER TABLE product_master ADD COLUMN created_at TEXT", 'created_at to product_master');
 
+  // Migration: Add code column to customers
+  safeExec(db, "ALTER TABLE customers ADD COLUMN code TEXT", 'code column to customers');
+
+  // Migration: Restructure customer_destinations - add type_name and type_code, drop delivery_types
+  migrateDestinationStructure(db);
+
+  // Migration: Update destination_name to proper case
+  migrateDestinationNameCase(db);
+
   logger.info('Migrations complete');
 }
 
@@ -40,7 +49,60 @@ function safeExec(db, sql, description) {
     db.exec(sql);
     logger.info(`Migration: ${description} added`);
   } catch (e) {
-    // Column may already exist, ignore
+    // Column may already exist or table issue, ignore
+  }
+}
+
+function migrateDestinationStructure(db) {
+  try {
+    // Check if new columns exist
+    const tableInfo = db.prepare("PRAGMA table_info(customer_destinations)").all();
+    const hasTypeName = tableInfo.some(col => col.name === 'type_name');
+    const hasTypeCode = tableInfo.some(col => col.name === 'type_code');
+
+    if (!hasTypeName) {
+      db.exec("ALTER TABLE customer_destinations ADD COLUMN type_name TEXT NOT NULL DEFAULT 'Regular'");
+      logger.info('Migration: type_name column added');
+    }
+
+    if (!hasTypeCode) {
+      db.exec("ALTER TABLE customer_destinations ADD COLUMN type_code TEXT NOT NULL DEFAULT ''");
+      logger.info('Migration: type_code column added');
+    }
+
+    // Migrate existing data: for each destination with delivery_types, create separate records
+    try {
+      const destinations = db.prepare("SELECT * FROM customer_destinations WHERE delivery_types IS NOT NULL").all();
+
+      for (const dest of destinations) {
+        let types = [];
+        try {
+          types = JSON.parse(dest.delivery_types || '[]');
+        } catch {
+          types = ['Regular'];
+        }
+
+        // For each type, create a separate record if it doesn't exist
+        for (const typeName of types) {
+          // Check if this destination+type combo already exists
+          const existing = db.prepare(
+            "SELECT id FROM customer_destinations WHERE customer_id = ? AND name = ? AND type_name = ?"
+          ).get(dest.customer_id, dest.name, typeName);
+
+          if (!existing) {
+            const newId = require('uuid').v4();
+            db.prepare(
+              "INSERT INTO customer_destinations (id, customer_id, name, type_name, code, type_code, is_default, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))"
+            ).run(newId, dest.customer_id, dest.name, typeName, dest.code, dest.code, dest.is_default);
+          }
+        }
+      }
+      logger.info(`Migration: restructured ${destinations.length} destinations`);
+    } catch (e) {
+      logger.warn('Migration: destination structure migration skipped', e.message);
+    }
+  } catch (e) {
+    logger.warn('Migration: destination structure skipped', e.message);
   }
 }
 
@@ -76,6 +138,46 @@ function migratePasswords(db) {
     }
   } catch (e) {
     logger.warn('Migration for password_plain skipped:', e.message);
+  }
+}
+
+function toProperCase(str) {
+  if (!str) return '';
+  return String(str)
+    .toLowerCase()
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function migrateDestinationNameCase(db) {
+  try {
+    // Update destination_name in sales_orders to proper case
+    const rows = db.prepare("SELECT id, destination_name FROM sales_orders WHERE destination_name IS NOT NULL AND destination_name != ''").all();
+
+    if (rows.length > 0) {
+      const updateStmt = db.prepare("UPDATE sales_orders SET destination_name = ? WHERE id = ?");
+      for (const row of rows) {
+        const properName = toProperCase(row.destination_name);
+        if (properName !== row.destination_name) {
+          updateStmt.run(properName, row.id);
+        }
+      }
+      logger.info(`Migration: updated ${rows.length} destination_name to proper case`);
+    }
+
+    // Also update customer_destinations name to proper case
+    const destRows = db.prepare("SELECT id, name FROM customer_destinations WHERE name IS NOT NULL AND name != ''").all();
+    if (destRows.length > 0) {
+      const updateDestStmt = db.prepare("UPDATE customer_destinations SET name = ? WHERE id = ?");
+      for (const row of destRows) {
+        const properName = toProperCase(row.name);
+        if (properName !== row.name) {
+          updateDestStmt.run(properName, row.id);
+        }
+      }
+      logger.info(`Migration: updated ${destRows.length} customer_destinations name to proper case`);
+    }
+  } catch (e) {
+    logger.warn('Migration: destination name case skipped', e.message);
   }
 }
 

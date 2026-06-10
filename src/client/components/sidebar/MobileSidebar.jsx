@@ -25,7 +25,7 @@ export function MobileSidebar({ isOpen, onClose, isAdmin }) {
               <img src="/logo.png" alt="Logo" className="w-7 h-7 object-contain" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-white">SJP Delivery</h1>
+              <h1 className="text-lg font-bold text-white">Delivery Control</h1>
               <p className="text-[10px] text-slate-500">Management System</p>
             </div>
           </div>
@@ -82,7 +82,7 @@ export function MobileSidebar({ isOpen, onClose, isAdmin }) {
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <p className="text-[10px] text-slate-500">Version 2.0.0</p>
             </div>
-            <p className="text-[9px] text-slate-600 text-center">© 2026 SJP Delivery Systems</p>
+            <p className="text-[9px] text-slate-600 text-center">© 2026 Delivery Control Systems</p>
           </div>
         </div>
       </aside>
